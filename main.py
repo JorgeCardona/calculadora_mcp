@@ -6,7 +6,9 @@ import operator as op
 import os
 import functools
 import inspect
+from typing import List
 from fastmcp import FastMCP
+from mcp.types import Tool
 
 # Define FastAPI app
 app = FastAPI(title="Math API WEB MCP", description="API de operaciones matemáticas", version="1.0.0")
@@ -31,8 +33,9 @@ class ExpressionOperation(BaseModel):
     expr: str
 
 # ---------------------------
-# Decorador de logging (Simplified for cloud)
+# Decorador de logging
 # ---------------------------
+
 def api_log(func):
     @functools.wraps(func)
     async def wrapper(*args, **kwargs):
@@ -163,10 +166,119 @@ async def root():
 # MCP Server Wrapper
 # ---------------------------
 
-# Create MCP server from FastAPI app
 mcp = FastMCP.from_fastapi(app)
+
+# ---------------------------
+# Explicit MCP Standard Method
+# ---------------------------
+
+@mcp.list_tools()
+async def list_tools() -> List[Tool]:
+    """
+    Standard MCP tools/list method.
+    """
+    return [
+        Tool(
+            name="sumar",
+            description="Suma dos números",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number"},
+                    "b": {"type": "number"}
+                },
+                "required": ["a", "b"]
+            }
+        ),
+        Tool(
+            name="restar",
+            description="Resta b de a",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number"},
+                    "b": {"type": "number"}
+                },
+                "required": ["a", "b"]
+            }
+        ),
+        Tool(
+            name="multiplicar",
+            description="Multiplica dos números",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number"},
+                    "b": {"type": "number"}
+                },
+                "required": ["a", "b"]
+            }
+        ),
+        Tool(
+            name="dividir",
+            description="Divide a entre b",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number"},
+                    "b": {"type": "number"}
+                },
+                "required": ["a", "b"]
+            }
+        ),
+        Tool(
+            name="modulo",
+            description="Calcula el módulo de a / b",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "a": {"type": "number"},
+                    "b": {"type": "number"}
+                },
+                "required": ["a", "b"]
+            }
+        ),
+        Tool(
+            name="potencia",
+            description="Eleva base a la potencia exponent",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "base": {"type": "number"},
+                    "exponent": {"type": "number"}
+                },
+                "required": ["base", "exponent"]
+            }
+        ),
+        Tool(
+            name="raiz",
+            description="Calcula la raíz n-ésima de x",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "n": {"type": "number"},
+                    "x": {"type": "number"}
+                },
+                "required": ["n", "x"]
+            }
+        ),
+        Tool(
+            name="evaluar",
+            description="Evalúa una expresión matemática segura",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "expr": {"type": "string"}
+                },
+                "required": ["expr"]
+            }
+        )
+    ]
+
+# ---------------------------
+# Run Server
+# ---------------------------
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    # Run using the MCP runner which handles SSE/HTTP
     mcp.run(transport="http", host="0.0.0.0", port=port)

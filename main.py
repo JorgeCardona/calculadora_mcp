@@ -276,6 +276,35 @@ async def list_tools() -> List[Tool]:
     ]
 
 # ---------------------------
+# Native MCP Tools
+# ---------------------------
+
+@mcp.tool()
+async def math_summary(a: float, b: float) -> dict:
+    """
+    Devuelve suma, resta, multiplicación y división entre dos números.
+    """
+    return {
+        "a": a,
+        "b": b,
+        "sum": a + b,
+        "difference": a - b,
+        "product": a * b,
+        "division": None if b == 0 else a / b
+    }
+
+
+@mcp.tool()
+async def server_status() -> dict:
+    """
+    Devuelve información básica del servidor MCP.
+    """
+    return {
+        "service": "Math API MCP",
+        "status": "running"
+    }
+
+# ---------------------------
 # Run Server
 # ---------------------------
 

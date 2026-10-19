@@ -1,23 +1,23 @@
-
 # main.py
 # API REST + MCP
 # REST: https://calculadora-mcp.onrender.com/docs
 # MCP:  https://calculadora-mcp.onrender.com/mcp
 
 import ast
-import functools
-import inspect
-import json
+import logging
 import math
 import operator as op
 import os
+from contextlib import asynccontextmanager
+from functools import wraps
+from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
+from typeguard import typechecked
 from fastmcp import FastMCP
-from fastmcp.tools import ToolResult
-from mcp.types import Annotations, TextContent, ToolAnnotations
+from mcp.types import ToolAnnotations
 
 
 # =========================================================
@@ -25,31 +25,72 @@ from mcp.types import Annotations, TextContent, ToolAnnotations
 # =========================================================
 
 VERSION = "2.1.3"
-SERVICE_NAME = "calculadora-mcp"
 
-mcp = FastMCP("Calculadora")
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s",
+)
+
+logger = logging.getLogger("calculadora")
 
 
 # =========================================================
-# MODELOS PYDANTIC
+# LOGGING: DIFERENCIA REST Y MCP
+# =========================================================
+
+def registrar_llamada(origen: str, nombre: str):
+    def decorador(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            logger.info(
+                "[%s] INICIO | herramienta=%s",
+                origen,
+                nombre,
+            )
+            try:
+                resultado = func(*args, **kwargs)
+                logger.info(
+                    "[%s] ÉXITO | herramienta=%s",
+                    origen,
+                    nombre,
+                )
+                return resultado
+            except Exception:
+                logger.exception(
+                    "[%s] ERROR | herramienta=%s",
+                    origen,
+                    nombre,
+                )
+                raise
+
+        return wrapper
+    return decorador
+
+
+# =========================================================
+# MODELOS
 # =========================================================
 
 class BinaryOperation(BaseModel):
+    model_config = ConfigDict(strict=True)
     a: float
     b: float
 
 
 class PowerOperation(BaseModel):
+    model_config = ConfigDict(strict=True)
     base: float
     exponent: float
 
 
 class RootOperation(BaseModel):
+    model_config = ConfigDict(strict=True)
     n: float
     x: float
 
 
 class ExpressionOperation(BaseModel):
+    model_config = ConfigDict(strict=True)
     expr: str
 
 
@@ -57,93 +98,117 @@ class ExpressionOperation(BaseModel):
 # LÓGICA DE NEGOCIO COMPARTIDA
 # =========================================================
 
+@typechecked
 def calcular_suma(a: float, b: float) -> dict:
+    resultado = a + b
+    if not math.isfinite(resultado):
+        raise ValueError("El resultado no es finito.")
     return {
-        "result": a + b,
+        "result": resultado,
         "operation": "sumar",
         "a": a,
         "b": b,
     }
 
 
+@typechecked
 def calcular_resta(a: float, b: float) -> dict:
+    resultado = a - b
+    if not math.isfinite(resultado):
+        raise ValueError("El resultado no es finito.")
     return {
-        "result": a - b,
+        "result": resultado,
         "operation": "restar",
         "a": a,
         "b": b,
     }
 
 
+@typechecked
 def calcular_multiplicacion(a: float, b: float) -> dict:
+    resultado = a * b
+    if not math.isfinite(resultado):
+        raise ValueError("El resultado no es finito.")
     return {
-        "result": a * b,
+        "result": resultado,
         "operation": "multiplicar",
         "a": a,
         "b": b,
     }
 
 
+@typechecked
 def calcular_division(a: float, b: float) -> dict:
     if b == 0:
         raise ValueError("No se puede dividir entre cero.")
-
+    resultado = a / b
+    if not math.isfinite(resultado):
+        raise ValueError("El resultado no es finito.")
     return {
-        "result": a / b,
+        "result": resultado,
         "operation": "dividir",
         "a": a,
         "b": b,
     }
 
 
+@typechecked
 def calcular_modulo(a: float, b: float) -> dict:
     if b == 0:
-        raise ValueError("No se puede calcular el módulo entre cero.")
-
+        raise ValueError("No se puede calcular módulo entre cero.")
+    resultado = a % b
+    if not math.isfinite(resultado):
+        raise ValueError("El resultado no es finito.")
     return {
-        "result": a % b,
+        "result": resultado,
         "operation": "modulo",
         "a": a,
         "b": b,
     }
 
 
+@typechecked
 def calcular_potencia(base: float, exponent: float) -> dict:
-    result = base ** exponent
+    resultado = base ** exponent
 
-    if isinstance(result, complex):
-        raise ValueError("El resultado complejo no está soportado.")
+    if isinstance(resultado, complex):
+        raise ValueError("No se admiten resultados complejos.")
 
-    if not math.isfinite(float(result)):
-        raise ValueError("El resultado no es un número finito.")
+    resultado = float(resultado)
+
+    if not math.isfinite(resultado):
+        raise ValueError("El resultado no es finito.")
 
     return {
-        "result": result,
+        "result": resultado,
         "operation": "potencia",
         "base": base,
         "exponent": exponent,
     }
 
 
+@typechecked
 def calcular_raiz(n: float, x: float) -> dict:
     if n == 0:
         raise ValueError("El índice de la raíz no puede ser cero.")
 
     if x < 0:
         if n.is_integer() and int(n) % 2 != 0:
-            result = -((-x) ** (1 / n))
+            resultado = -((-x) ** (1 / n))
         else:
             raise ValueError(
-                "Esta raíz no tiene resultado real para los valores dados."
+                "La raíz no tiene resultado real para estos valores."
             )
     else:
-        result = x ** (1 / n)
+        resultado = x ** (1 / n)
 
-    if not math.isfinite(float(result)):
-        raise ValueError("El resultado no es un número finito.")
+    resultado = float(resultado)
+
+    if not math.isfinite(resultado):
+        raise ValueError("El resultado no es finito.")
 
     return {
-        "result": result,
+        "result": resultado,
         "operation": "raiz",
         "n": n,
         "x": x,
@@ -151,10 +216,10 @@ def calcular_raiz(n: float, x: float) -> dict:
 
 
 # =========================================================
-# EVALUADOR SEGURO DE EXPRESIONES
+# EVALUADOR SEGURO
 # =========================================================
 
-_ALLOWED_BINOPS = {
+_BINOPS = {
     ast.Add: op.add,
     ast.Sub: op.sub,
     ast.Mult: op.mul,
@@ -163,60 +228,58 @@ _ALLOWED_BINOPS = {
     ast.Mod: op.mod,
 }
 
-_ALLOWED_UNARYOPS = {
+_UNARYOPS = {
     ast.UAdd: op.pos,
     ast.USub: op.neg,
 }
 
 
-def _eval_node(node: ast.AST) -> float:
+@typechecked
+def evaluar_nodo(node: ast.AST) -> float:
     if isinstance(node, ast.Expression):
-        return _eval_node(node.body)
+        return evaluar_nodo(node.body)
 
     if (
         isinstance(node, ast.Constant)
         and not isinstance(node.value, bool)
         and isinstance(node.value, (int, float))
     ):
-        return float(node.value)
+        resultado = float(node.value)
+        if not math.isfinite(resultado):
+            raise ValueError("Número no finito.")
+        return resultado
 
-    if isinstance(node, ast.BinOp) and type(node.op) in _ALLOWED_BINOPS:
-        left = _eval_node(node.left)
-        right = _eval_node(node.right)
+    if isinstance(node, ast.BinOp) and type(node.op) in _BINOPS:
+        a = evaluar_nodo(node.left)
+        b = evaluar_nodo(node.right)
 
-        if isinstance(node.op, ast.Div) and right == 0:
-            raise ValueError("División entre cero.")
+        if isinstance(node.op, (ast.Div, ast.Mod)) and b == 0:
+            raise ValueError("No se permite dividir entre cero.")
 
-        if isinstance(node.op, ast.Mod) and right == 0:
-            raise ValueError("Módulo entre cero.")
+        resultado = _BINOPS[type(node.op)](a, b)
 
-        result = _ALLOWED_BINOPS[type(node.op)](left, right)
-
-        if isinstance(result, complex):
+        if isinstance(resultado, complex):
             raise ValueError("No se admiten resultados complejos.")
 
-        result = float(result)
+        resultado = float(resultado)
 
-        if not math.isfinite(result):
+        if not math.isfinite(resultado):
             raise ValueError("El resultado no es finito.")
 
-        return result
+        return resultado
 
-    if isinstance(node, ast.UnaryOp) and type(node.op) in _ALLOWED_UNARYOPS:
-        result = float(
-            _ALLOWED_UNARYOPS[type(node.op)](
-                _eval_node(node.operand)
-            )
+    if isinstance(node, ast.UnaryOp) and type(node.op) in _UNARYOPS:
+        resultado = float(
+            _UNARYOPS[type(node.op)](evaluar_nodo(node.operand))
         )
-
-        if not math.isfinite(result):
+        if not math.isfinite(resultado):
             raise ValueError("El resultado no es finito.")
-
-        return result
+        return resultado
 
     raise ValueError("Expresión no permitida.")
 
 
+@typechecked
 def calcular_expresion(expr: str) -> dict:
     expr = expr.strip()
 
@@ -224,31 +287,31 @@ def calcular_expresion(expr: str) -> dict:
         raise ValueError("La expresión está vacía.")
 
     try:
-        tree = ast.parse(expr, mode="eval")
-        result = _eval_node(tree)
-
+        resultado = evaluar_nodo(ast.parse(expr, mode="eval"))
         return {
-            "result": result,
+            "result": resultado,
             "operation": "evaluar",
             "expr": expr,
         }
-
     except (
         SyntaxError,
         TypeError,
         OverflowError,
         ZeroDivisionError,
-    ) as e:
-        raise ValueError(f"Expresión inválida: {e}") from e
+    ) as exc:
+        raise ValueError(f"Expresión inválida: {exc}") from exc
 
 
 # =========================================================
-# ANOTACIONES Y METADATOS MCP
+# FASTMCP: HERRAMIENTAS, ANOTACIONES Y METADATOS
 # =========================================================
 
-def anotaciones_calculo(title: str) -> ToolAnnotations:
+mcp = FastMCP("Calculadora")
+
+
+def anotaciones(titulo: str) -> ToolAnnotations:
     return ToolAnnotations(
-        title=title,
+        title=titulo,
         readOnlyHint=True,
         destructiveHint=False,
         idempotentHint=True,
@@ -256,222 +319,115 @@ def anotaciones_calculo(title: str) -> ToolAnnotations:
     )
 
 
-def metadatos_herramienta() -> dict:
-    return {
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    }
+def registrar_tool(nombre: str, descripcion: str):
+    """Registra una herramienta con nombre, anotaciones y meta."""
+    def decorador(func):
+        func = typechecked(func)
+        func = registrar_llamada("MCP", nombre)(func)
+
+        return mcp.tool(
+            name=nombre,
+            description=descripcion,
+            annotations=anotaciones(nombre.capitalize()),
+            meta={
+                "service": "calculadora",
+                "version": VERSION,
+                "category": "matematicas",
+                "tool": nombre,
+            },
+        )(func)
+
+    return decorador
 
 
-def crear_resultado_mcp(data: dict) -> ToolResult:
-    operation = data.get("operation", "desconocida")
+@registrar_tool("sumar", "Suma dos números.")
+def tool_sumar(a: float, b: float) -> dict:
+    return calcular_suma(a, b)
 
-    # Anotaciones del contenido de la respuesta.
-    # La audiencia "user" indica que el contenido está
-    # destinado al usuario.
-    content_annotations = Annotations(
-        audience=["user"],
-        priority=1.0,
-    )
 
-    # Metadatos personalizados del contenido.
-    content_meta = {
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "operation": operation,
-        "content_format": "application/json",
-    }
+@registrar_tool("restar", "Resta b de a.")
+def tool_restar(a: float, b: float) -> dict:
+    return calcular_resta(a, b)
 
-    # Metadatos personalizados de la ejecución.
-    execution_meta = {
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "operation": operation,
-        "status": "success",
-    }
 
-    content = TextContent(
-        type="text",
-        text=json.dumps(data, ensure_ascii=False),
-        annotations=content_annotations,
-        meta=content_meta,
-    )
+@registrar_tool("multiplicar", "Multiplica dos números.")
+def tool_multiplicar(a: float, b: float) -> dict:
+    return calcular_multiplicacion(a, b)
 
-    return ToolResult(
-        content=[content],
-        structured_content=data,
-        meta=execution_meta,
-    )
+
+@registrar_tool("dividir", "Divide a entre b.")
+def tool_dividir(a: float, b: float) -> dict:
+    return calcular_division(a, b)
+
+
+@registrar_tool("modulo", "Calcula el resto de a dividido entre b.")
+def tool_modulo(a: float, b: float) -> dict:
+    return calcular_modulo(a, b)
+
+
+@registrar_tool("potencia", "Eleva una base a un exponente.")
+def tool_potencia(base: float, exponent: float) -> dict:
+    return calcular_potencia(base, exponent)
+
+
+@registrar_tool("raiz", "Calcula la raíz n-ésima de un número.")
+def tool_raiz(n: float, x: float) -> dict:
+    return calcular_raiz(n, x)
+
+
+@registrar_tool(
+    "evaluar",
+    "Evalúa una expresión matemática de forma segura.",
+)
+def tool_evaluar(expr: str) -> dict:
+    return calcular_expresion(expr)
 
 
 # =========================================================
-# HERRAMIENTAS MCP
-# Los nombres públicos se definen explícitamente.
-# =========================================================
-
-@mcp.tool(
-    name="sumar",
-    description="Suma dos números y devuelve el resultado.",
-    annotations=anotaciones_calculo("Sumar"),
-    meta=metadatos_herramienta(),
-)
-def tool_sumar(a: float, b: float) -> ToolResult:
-    """Suma dos números."""
-    return crear_resultado_mcp(calcular_suma(a, b))
-
-
-@mcp.tool(
-    name="restar",
-    description="Resta b de a.",
-    annotations=anotaciones_calculo("Restar"),
-    meta=metadatos_herramienta(),
-)
-def tool_restar(a: float, b: float) -> ToolResult:
-    """Resta b de a."""
-    return crear_resultado_mcp(calcular_resta(a, b))
-
-
-@mcp.tool(
-    name="multiplicar",
-    description="Multiplica dos números.",
-    annotations=anotaciones_calculo("Multiplicar"),
-    meta=metadatos_herramienta(),
-)
-def tool_multiplicar(a: float, b: float) -> ToolResult:
-    """Multiplica dos números."""
-    return crear_resultado_mcp(calcular_multiplicacion(a, b))
-
-
-@mcp.tool(
-    name="dividir",
-    description="Divide a entre b.",
-    annotations=anotaciones_calculo("Dividir"),
-    meta=metadatos_herramienta(),
-)
-def tool_dividir(a: float, b: float) -> ToolResult:
-    """Divide a entre b."""
-    return crear_resultado_mcp(calcular_division(a, b))
-
-
-@mcp.tool(
-    name="modulo",
-    description="Calcula el resto de a dividido entre b.",
-    annotations=anotaciones_calculo("Módulo"),
-    meta=metadatos_herramienta(),
-)
-def tool_modulo(a: float, b: float) -> ToolResult:
-    """Calcula el resto de a dividido entre b."""
-    return crear_resultado_mcp(calcular_modulo(a, b))
-
-
-@mcp.tool(
-    name="potencia",
-    description="Eleva una base a un exponente.",
-    annotations=anotaciones_calculo("Potencia"),
-    meta=metadatos_herramienta(),
-)
-def tool_potencia(base: float, exponent: float) -> ToolResult:
-    """Eleva base a la potencia exponent."""
-    return crear_resultado_mcp(
-        calcular_potencia(base, exponent)
-    )
-
-
-@mcp.tool(
-    name="raiz",
-    description="Calcula la raíz n-ésima de un número real.",
-    annotations=anotaciones_calculo("Raíz"),
-    meta=metadatos_herramienta(),
-)
-def tool_raiz(n: float, x: float) -> ToolResult:
-    """Calcula la raíz n-ésima de x."""
-    return crear_resultado_mcp(calcular_raiz(n, x))
-
-
-@mcp.tool(
-    name="evaluar",
-    description="Evalúa una expresión matemática de forma segura.",
-    annotations=anotaciones_calculo("Evaluar expresión"),
-    meta=metadatos_herramienta(),
-)
-def tool_evaluar(expr: str) -> ToolResult:
-    """Evalúa una expresión matemática de forma segura."""
-    return crear_resultado_mcp(calcular_expresion(expr))
-
-
-# =========================================================
-# FASTAPI + INTEGRACIÓN HTTP DE MCP
+# FASTAPI + CICLO DE VIDA MCP
 # =========================================================
 
 mcp_app = mcp.http_app(path="/")
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with mcp_app.lifespan(app):
+        yield
+
 
 app = FastAPI(
     title="Math API WEB MCP",
     description="Microservicio matemático con API REST y MCP",
     version=VERSION,
-    lifespan=mcp_app.lifespan,
+    lifespan=lifespan,
 )
-
-
-# =========================================================
-# DECORADOR DE LOGGING
-# =========================================================
-
-def api_log(func):
-    if inspect.iscoroutinefunction(func):
-
-        @functools.wraps(func)
-        async def async_wrapper(*args, **kwargs):
-            try:
-                result = await func(*args, **kwargs)
-                print(
-                    f"ENDPOINT: {func.__name__} | RESULT: {result}"
-                )
-                return result
-            except Exception as e:
-                print(f"ERROR en {func.__name__}: {e}")
-                raise
-
-        return async_wrapper
-
-    @functools.wraps(func)
-    def sync_wrapper(*args, **kwargs):
-        try:
-            result = func(*args, **kwargs)
-            print(
-                f"ENDPOINT: {func.__name__} | RESULT: {result}"
-            )
-            return result
-        except Exception as e:
-            print(f"ERROR en {func.__name__}: {e}")
-            raise
-
-    return sync_wrapper
 
 
 # =========================================================
 # ENDPOINTS REST
 # =========================================================
 
-@app.post(
-    "/sumar",
-    tags=["Operaciones Básicas"],
-    operation_id="rest_sumar",
-)
-@api_log
+def ejecutar_rest(nombre: str, funcion, *args):
+    try:
+        return funcion(*args)
+    except (ValueError, OverflowError, ZeroDivisionError) as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        ) from exc
+
+
+@app.post("/sumar", tags=["Operaciones Básicas"], operation_id="rest_sumar")
+@registrar_llamada("REST", "sumar")
 def rest_sumar(operation: BinaryOperation):
-    return calcular_suma(operation.a, operation.b)
+    return ejecutar_rest("sumar", calcular_suma, operation.a, operation.b)
 
 
-@app.post(
-    "/restar",
-    tags=["Operaciones Básicas"],
-    operation_id="rest_restar",
-)
-@api_log
+@app.post("/restar", tags=["Operaciones Básicas"], operation_id="rest_restar")
+@registrar_llamada("REST", "restar")
 def rest_restar(operation: BinaryOperation):
-    return calcular_resta(operation.a, operation.b)
+    return ejecutar_rest("restar", calcular_resta, operation.a, operation.b)
 
 
 @app.post(
@@ -479,35 +435,23 @@ def rest_restar(operation: BinaryOperation):
     tags=["Operaciones Básicas"],
     operation_id="rest_multiplicar",
 )
-@api_log
+@registrar_llamada("REST", "multiplicar")
 def rest_multiplicar(operation: BinaryOperation):
-    return calcular_multiplicacion(operation.a, operation.b)
+    return ejecutar_rest(
+        "multiplicar", calcular_multiplicacion, operation.a, operation.b
+    )
 
 
-@app.post(
-    "/dividir",
-    tags=["Operaciones Básicas"],
-    operation_id="rest_dividir",
-)
-@api_log
+@app.post("/dividir", tags=["Operaciones Básicas"], operation_id="rest_dividir")
+@registrar_llamada("REST", "dividir")
 def rest_dividir(operation: BinaryOperation):
-    try:
-        return calcular_division(operation.a, operation.b)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return ejecutar_rest("dividir", calcular_division, operation.a, operation.b)
 
 
-@app.post(
-    "/modulo",
-    tags=["Operaciones Básicas"],
-    operation_id="rest_modulo",
-)
-@api_log
+@app.post("/modulo", tags=["Operaciones Básicas"], operation_id="rest_modulo")
+@registrar_llamada("REST", "modulo")
 def rest_modulo(operation: BinaryOperation):
-    try:
-        return calcular_modulo(operation.a, operation.b)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return ejecutar_rest("modulo", calcular_modulo, operation.a, operation.b)
 
 
 @app.post(
@@ -515,28 +459,17 @@ def rest_modulo(operation: BinaryOperation):
     tags=["Operaciones Avanzadas"],
     operation_id="rest_potencia",
 )
-@api_log
+@registrar_llamada("REST", "potencia")
 def rest_potencia(operation: PowerOperation):
-    try:
-        return calcular_potencia(
-            operation.base,
-            operation.exponent,
-        )
-    except (ValueError, OverflowError) as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return ejecutar_rest(
+        "potencia", calcular_potencia, operation.base, operation.exponent
+    )
 
 
-@app.post(
-    "/raiz",
-    tags=["Operaciones Avanzadas"],
-    operation_id="rest_raiz",
-)
-@api_log
+@app.post("/raiz", tags=["Operaciones Avanzadas"], operation_id="rest_raiz")
+@registrar_llamada("REST", "raiz")
 def rest_raiz(operation: RootOperation):
-    try:
-        return calcular_raiz(operation.n, operation.x)
-    except (ValueError, OverflowError) as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return ejecutar_rest("raiz", calcular_raiz, operation.n, operation.x)
 
 
 @app.post(
@@ -544,16 +477,13 @@ def rest_raiz(operation: RootOperation):
     tags=["Operaciones Avanzadas"],
     operation_id="rest_evaluar",
 )
-@api_log
+@registrar_llamada("REST", "evaluar")
 def rest_evaluar(operation: ExpressionOperation):
-    try:
-        return calcular_expresion(operation.expr)
-    except (ValueError, OverflowError) as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+    return ejecutar_rest("evaluar", calcular_expresion, operation.expr)
 
 
 # =========================================================
-# ENDPOINT DE INFORMACIÓN
+# INFORMACIÓN
 # =========================================================
 
 @app.get("/", tags=["Info"])
@@ -578,14 +508,14 @@ def info():
 
 
 # =========================================================
-# MONTAR MCP EN FASTAPI
+# MONTAJE MCP
 # =========================================================
 
 app.mount("/mcp", mcp_app)
 
 
 # =========================================================
-# ARRANQUE LOCAL Y RENDER
+# ARRANQUE
 # =========================================================
 
 if __name__ == "__main__":

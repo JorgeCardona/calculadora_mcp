@@ -4,17 +4,30 @@
 # REST: https://calculadora-mcp.onrender.com/docs
 # MCP:  https://calculadora-mcp.onrender.com/mcp
 
-from contextlib import asynccontextmanager
+import ast
+import functools
+import inspect
+import json
+import math
+import operator as op
+import os
+
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastmcp import FastMCP
-import uvicorn
-import ast
-import operator as op
-import os
-import functools
-import inspect
-import math
+from fastmcp.tools import ToolResult
+from mcp.types import Annotations, Role, TextContent, ToolAnnotations
+
+
+# =========================================================
+# CONFIGURACIÓN
+# =========================================================
+
+VERSION = "2.1.0"
+SERVICE_NAME = "calculadora-mcp"
+
+mcp = FastMCP("Calculadora")
 
 
 # =========================================================
@@ -42,7 +55,6 @@ class ExpressionOperation(BaseModel):
 
 # =========================================================
 # LÓGICA DE NEGOCIO COMPARTIDA
-# Estas funciones son utilizadas por REST y MCP.
 # =========================================================
 
 def calcular_suma(a: float, b: float) -> dict:
@@ -191,7 +203,16 @@ def _eval_node(node: ast.AST) -> float:
         return result
 
     if isinstance(node, ast.UnaryOp) and type(node.op) in _ALLOWED_UNARYOPS:
-        return float(_ALLOWED_UNARYOPS[type(node.op)](_eval_node(node.operand)))
+        result = float(
+            _ALLOWED_UNARYOPS[type(node.op)](
+                _eval_node(node.operand)
+            )
+        )
+
+        if not math.isfinite(result):
+            raise ValueError("El resultado no es finito.")
+
+        return result
 
     raise ValueError("Expresión no permitida.")
 
@@ -217,87 +238,209 @@ def calcular_expresion(expr: str) -> dict:
 
 
 # =========================================================
-# SERVIDOR MCP
-# Los nombres de las herramientas se definen explícitamente.
+# METADATOS DE RESPUESTA MCP
 # =========================================================
 
-mcp = FastMCP("Calculadora")
+def crear_resultado_mcp(data: dict) -> ToolResult:
+    """
+    Genera una respuesta MCP con:
+    - content: contenido de texto y sus anotaciones.
+    - structured_content: resultado JSON estructurado.
+    - meta: metadatos de esta ejecución.
+    """
+
+    operation = data.get("operation", "desconocida")
+
+    content_annotations = Annotations(
+        audience=[Role.USER],
+        priority=1.0,
+    )
+
+    content_meta = {
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "operation": operation,
+        "content_format": "application/json",
+    }
+
+    execution_meta = {
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "operation": operation,
+        "status": "success",
+    }
+
+    content = TextContent(
+        type="text",
+        text=json.dumps(data, ensure_ascii=False),
+        annotations=content_annotations,
+        meta=content_meta,
+    )
+
+    return ToolResult(
+        content=[content],
+        structured_content=data,
+        meta=execution_meta,
+    )
 
 
-@mcp.tool(name="sumar")
-def tool_sumar(a: float, b: float) -> dict:
+# =========================================================
+# ANOTACIONES ESTÁNDAR DE LAS HERRAMIENTAS
+# =========================================================
+
+def anotaciones_calculo(title: str) -> ToolAnnotations:
+    return ToolAnnotations(
+        title=title,
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    )
+
+
+# =========================================================
+# HERRAMIENTAS MCP
+# Los nombres públicos son exactamente los indicados.
+# =========================================================
+
+@mcp.tool(
+    name="sumar",
+    description="Suma dos números y devuelve el resultado.",
+    annotations=anotaciones_calculo("Sumar"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_sumar(a: float, b: float) -> ToolResult:
     """Suma dos números."""
-    return calcular_suma(a, b)
+    return crear_resultado_mcp(calcular_suma(a, b))
 
 
-@mcp.tool(name="restar")
-def tool_restar(a: float, b: float) -> dict:
+@mcp.tool(
+    name="restar",
+    description="Resta el segundo número al primero.",
+    annotations=anotaciones_calculo("Restar"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_restar(a: float, b: float) -> ToolResult:
     """Resta b de a."""
-    return calcular_resta(a, b)
+    return crear_resultado_mcp(calcular_resta(a, b))
 
 
-@mcp.tool(name="multiplicar")
-def tool_multiplicar(a: float, b: float) -> dict:
+@mcp.tool(
+    name="multiplicar",
+    description="Multiplica dos números.",
+    annotations=anotaciones_calculo("Multiplicar"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_multiplicar(a: float, b: float) -> ToolResult:
     """Multiplica dos números."""
-    return calcular_multiplicacion(a, b)
+    return crear_resultado_mcp(calcular_multiplicacion(a, b))
 
 
-@mcp.tool(name="dividir")
-def tool_dividir(a: float, b: float) -> dict:
+@mcp.tool(
+    name="dividir",
+    description="Divide el primer número entre el segundo.",
+    annotations=anotaciones_calculo("Dividir"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_dividir(a: float, b: float) -> ToolResult:
     """Divide a entre b."""
-    return calcular_division(a, b)
+    return crear_resultado_mcp(calcular_division(a, b))
 
 
-@mcp.tool(name="modulo")
-def tool_modulo(a: float, b: float) -> dict:
+@mcp.tool(
+    name="modulo",
+    description="Calcula el resto de la división de dos números.",
+    annotations=anotaciones_calculo("Módulo"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_modulo(a: float, b: float) -> ToolResult:
     """Calcula el resto de a dividido entre b."""
-    return calcular_modulo(a, b)
+    return crear_resultado_mcp(calcular_modulo(a, b))
 
 
-@mcp.tool(name="potencia")
-def tool_potencia(base: float, exponent: float) -> dict:
+@mcp.tool(
+    name="potencia",
+    description="Eleva una base a un exponente.",
+    annotations=anotaciones_calculo("Potencia"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_potencia(base: float, exponent: float) -> ToolResult:
     """Eleva base a la potencia exponent."""
-    return calcular_potencia(base, exponent)
+    return crear_resultado_mcp(
+        calcular_potencia(base, exponent)
+    )
 
 
-@mcp.tool(name="raiz")
-def tool_raiz(n: float, x: float) -> dict:
+@mcp.tool(
+    name="raiz",
+    description="Calcula la raíz n-ésima de un número real.",
+    annotations=anotaciones_calculo("Raíz"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_raiz(n: float, x: float) -> ToolResult:
     """Calcula la raíz n-ésima de x."""
-    return calcular_raiz(n, x)
+    return crear_resultado_mcp(calcular_raiz(n, x))
 
 
-@mcp.tool(name="evaluar")
-def tool_evaluar(expr: str) -> dict:
+@mcp.tool(
+    name="evaluar",
+    description="Evalúa una expresión matemática de forma segura.",
+    annotations=anotaciones_calculo("Evaluar expresión"),
+    meta={
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    },
+)
+def tool_evaluar(expr: str) -> ToolResult:
     """Evalúa una expresión matemática de forma segura."""
-    return calcular_expresion(expr)
+    return crear_resultado_mcp(calcular_expresion(expr))
 
 
 # =========================================================
-# INTEGRACIÓN HTTP DE MCP
+# FASTAPI: API REST + MCP
 # =========================================================
 
-# MCP se monta en /mcp dentro de FastAPI.
-# El path interno "/" permite que la URL final sea /mcp.
 mcp_app = mcp.http_app(path="/")
-
-
-# =========================================================
-# APLICACIÓN FASTAPI
-# FastAPI sirve REST y también aloja el servidor MCP.
-# Se comparte el ciclo de vida de FastMCP para inicializar
-# correctamente las sesiones del protocolo.
-# =========================================================
 
 app = FastAPI(
     title="Math API WEB MCP",
     description="Microservicio matemático con API REST y MCP",
-    version="2.0.0",
+    version=VERSION,
     lifespan=mcp_app.lifespan,
 )
 
 
 # =========================================================
-# DECORADOR DE LOGGING
+# DECORADOR DE LOGGING REST
 # =========================================================
 
 def api_log(func):
@@ -326,45 +469,41 @@ def api_log(func):
 
 @app.post(
     "/sumar",
-    response_model=dict,
     tags=["Operaciones Básicas"],
     operation_id="rest_sumar",
 )
 @api_log
-def add(operation: BinaryOperation):
+def rest_sumar(operation: BinaryOperation):
     return calcular_suma(operation.a, operation.b)
 
 
 @app.post(
     "/restar",
-    response_model=dict,
     tags=["Operaciones Básicas"],
     operation_id="rest_restar",
 )
 @api_log
-def sub(operation: BinaryOperation):
+def rest_restar(operation: BinaryOperation):
     return calcular_resta(operation.a, operation.b)
 
 
 @app.post(
     "/multiplicar",
-    response_model=dict,
     tags=["Operaciones Básicas"],
     operation_id="rest_multiplicar",
 )
 @api_log
-def mul(operation: BinaryOperation):
+def rest_multiplicar(operation: BinaryOperation):
     return calcular_multiplicacion(operation.a, operation.b)
 
 
 @app.post(
     "/dividir",
-    response_model=dict,
     tags=["Operaciones Básicas"],
     operation_id="rest_dividir",
 )
 @api_log
-def div(operation: BinaryOperation):
+def rest_dividir(operation: BinaryOperation):
     try:
         return calcular_division(operation.a, operation.b)
     except ValueError as e:
@@ -373,44 +512,40 @@ def div(operation: BinaryOperation):
 
 @app.post(
     "/modulo",
-    response_model=dict,
     tags=["Operaciones Básicas"],
     operation_id="rest_modulo",
 )
 @api_log
-def mod(operation: BinaryOperation):
+def rest_modulo(operation: BinaryOperation):
     try:
         return calcular_modulo(operation.a, operation.b)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-# =========================================================
-# OPERACIONES AVANZADAS REST
-# =========================================================
-
 @app.post(
     "/potencia",
-    response_model=dict,
     tags=["Operaciones Avanzadas"],
     operation_id="rest_potencia",
 )
 @api_log
-def power(operation: PowerOperation):
+def rest_potencia(operation: PowerOperation):
     try:
-        return calcular_potencia(operation.base, operation.exponent)
+        return calcular_potencia(
+            operation.base,
+            operation.exponent,
+        )
     except (ValueError, OverflowError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
 @app.post(
     "/raiz",
-    response_model=dict,
     tags=["Operaciones Avanzadas"],
     operation_id="rest_raiz",
 )
 @api_log
-def root(operation: RootOperation):
+def rest_raiz(operation: RootOperation):
     try:
         return calcular_raiz(operation.n, operation.x)
     except (ValueError, OverflowError) as e:
@@ -419,12 +554,11 @@ def root(operation: RootOperation):
 
 @app.post(
     "/evaluar",
-    response_model=dict,
     tags=["Operaciones Avanzadas"],
     operation_id="rest_evaluar",
 )
 @api_log
-def eval_expr(operation: ExpressionOperation):
+def rest_evaluar(operation: ExpressionOperation):
     try:
         return calcular_expresion(operation.expr)
     except (ValueError, OverflowError) as e:
@@ -432,15 +566,16 @@ def eval_expr(operation: ExpressionOperation):
 
 
 # =========================================================
-# ENDPOINT DE INFORMACIÓN
+# INFORMACIÓN DE LA API
 # =========================================================
 
 @app.get("/", tags=["Info"])
 def info():
     return {
         "name": "Math API WEB MCP",
-        "version": "2.0.0",
+        "version": VERSION,
         "docs": "/docs",
+        "openapi": "/openapi.json",
         "mcp": "/mcp",
         "tools": [
             "sumar",
@@ -456,14 +591,14 @@ def info():
 
 
 # =========================================================
-# MONTAR MCP EN FASTAPI
+# MONTAJE MCP
 # =========================================================
 
 app.mount("/mcp", mcp_app)
 
 
 # =========================================================
-# ARRANQUE LOCAL Y RENDER
+# ARRANQUE LOCAL / RENDER
 # =========================================================
 
 if __name__ == "__main__":

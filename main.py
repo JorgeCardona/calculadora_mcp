@@ -31,19 +31,31 @@ class ExpressionOperation(BaseModel):
     expr: str
 
 # ---------------------------
-# Decorador de logging (Simplified for cloud)
+# Decorador de logging (Soporte Sync / Async)
 # ---------------------------
 def api_log(func):
-    @functools.wraps(func)
-    async def wrapper(*args, **kwargs):
-        try:
-            result = await func(*args, **kwargs)
-            print(f"ENDPOINT: {func.__name__} | RESULT: {result}")
-            return result
-        except Exception as e:
-            print(f"ERROR in {func.__name__}: {e}")
-            raise
-    return wrapper
+    if inspect.iscoroutinefunction(func):
+        @functools.wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            try:
+                result = await func(*args, **kwargs)
+                print(f"ENDPOINT: {func.__name__} | RESULT: {result}")
+                return result
+            except Exception as e:
+                print(f"ERROR in {func.__name__}: {e}")
+                raise
+        return async_wrapper
+    else:
+        @functools.wraps(func)
+        def sync_wrapper(*args, **kwargs):
+            try:
+                result = func(*args, **kwargs)
+                print(f"ENDPOINT: {func.__name__} | RESULT: {result}")
+                return result
+            except Exception as e:
+                print(f"ERROR in {func.__name__}: {e}")
+                raise
+        return sync_wrapper
 
 # ---------------------------
 # Endpoints básicos
@@ -51,28 +63,28 @@ def api_log(func):
 
 @app.post("/sumar", response_model=dict, tags=["Operaciones Básicas"])
 @api_log
-async def add(operation: BinaryOperation):
+def add(operation: BinaryOperation):
     """Suma dos números."""
     result = operation.a + operation.b
     return {"result": result, "operation": "sumar", "a": operation.a, "b": operation.b}
 
 @app.post("/restar", response_model=dict, tags=["Operaciones Básicas"])
 @api_log
-async def sub(operation: BinaryOperation):
+def sub(operation: BinaryOperation):
     """Resta b de a."""
     result = operation.a - operation.b
     return {"result": result, "operation": "restar", "a": operation.a, "b": operation.b}
 
 @app.post("/multiplicar", response_model=dict, tags=["Operaciones Básicas"])
 @api_log
-async def mul(operation: BinaryOperation):
+def mul(operation: BinaryOperation):
     """Multiplica dos números."""
     result = operation.a * operation.b
     return {"result": result, "operation": "multiplicar", "a": operation.a, "b": operation.b}
 
 @app.post("/dividir", response_model=dict, tags=["Operaciones Básicas"])
 @api_log
-async def div(operation: BinaryOperation):
+def div(operation: BinaryOperation):
     """Divide a entre b."""
     if operation.b == 0:
         raise HTTPException(status_code=400, detail="Division by zero is not allowed.")
@@ -81,7 +93,7 @@ async def div(operation: BinaryOperation):
 
 @app.post("/modulo", response_model=dict, tags=["Operaciones Básicas"])
 @api_log
-async def mod(operation: BinaryOperation):
+def mod(operation: BinaryOperation):
     """Calcula el resto de a / b."""
     result = operation.a % operation.b
     return {"result": result, "operation": "modulo", "a": operation.a, "b": operation.b}
@@ -92,14 +104,14 @@ async def mod(operation: BinaryOperation):
 
 @app.post("/potencia", response_model=dict, tags=["Operaciones Avanzadas"])
 @api_log
-async def power(operation: PowerOperation):
+def power(operation: PowerOperation):
     """Eleva base a la potencia de exponent."""
     result = operation.base ** operation.exponent
     return {"result": result, "operation": "potencia", "base": operation.base, "exponent": operation.exponent}
 
 @app.post("/raiz", response_model=dict, tags=["Operaciones Avanzadas"])
 @api_log
-async def root(operation: RootOperation):
+def root(operation: RootOperation):
     """Calcula la raíz n-ésima de x."""
     if operation.n == 0:
         raise HTTPException(status_code=400, detail="Cannot calculate 0-th root.")
@@ -142,7 +154,7 @@ def _eval_node(node: ast.AST) -> float:
 
 @app.post("/evaluar", response_model=dict, tags=["Operaciones Avanzadas"])
 @api_log
-async def eval_expr(operation: ExpressionOperation):
+def eval_expr(operation: ExpressionOperation):
     """Evalúa una expresión matemática de forma segura."""
     expr = operation.expr.strip()
     if not expr:
@@ -155,7 +167,7 @@ async def eval_expr(operation: ExpressionOperation):
         raise HTTPException(status_code=400, detail=f"Invalid expression: {str(e)}")
 
 @app.get("/", tags=["Info"])
-async def root():
+def root():
     """Información de la API."""
     return {"name": "Math API", "version": "1.0.0", "docs": "/docs"}
 

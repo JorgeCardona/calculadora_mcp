@@ -174,15 +174,13 @@ def root():
     return {"name": "Math API", "version": "1.0.0", "docs": "/docs"}
 
 # ---------------------------
-# Integración Unificada (FastAPI Docs + MCP)
+# MCP Server Wrapper
 # ---------------------------
 
 mcp = FastMCP.from_fastapi(app)
 
-# Monta las rutas de FastMCP en /mcp conservando FastAPI como la app principal
-app.mount("/mcp", mcp.http_app(transport="http"))
-
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    # Ejecuta FastAPI directamente con Uvicorn para conservar /docs y servir /mcp
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    # mcp.run con transport="http" ejecuta el servidor con el handshake nativo
+    # que detectan los agentes de IA y los clientes MCP
+    mcp.run(transport="http", host="0.0.0.0", port=port)

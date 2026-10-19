@@ -17,14 +17,14 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from fastmcp import FastMCP
 from fastmcp.tools import ToolResult
-from mcp.types import Annotations, Role, TextContent, ToolAnnotations
+from mcp.types import Annotations, TextContent, ToolAnnotations
 
 
 # =========================================================
 # CONFIGURACIÓN
 # =========================================================
 
-VERSION = "2.1.0"
+VERSION = "2.1.3"
 SERVICE_NAME = "calculadora-mcp"
 
 mcp = FastMCP("Calculadora")
@@ -233,29 +233,49 @@ def calcular_expresion(expr: str) -> dict:
             "expr": expr,
         }
 
-    except (SyntaxError, TypeError, OverflowError, ZeroDivisionError) as e:
+    except (
+        SyntaxError,
+        TypeError,
+        OverflowError,
+        ZeroDivisionError,
+    ) as e:
         raise ValueError(f"Expresión inválida: {e}") from e
 
 
 # =========================================================
-# METADATOS DE RESPUESTA MCP
+# ANOTACIONES Y METADATOS MCP
 # =========================================================
 
-def crear_resultado_mcp(data: dict) -> ToolResult:
-    """
-    Genera una respuesta MCP con:
-    - content: contenido de texto y sus anotaciones.
-    - structured_content: resultado JSON estructurado.
-    - meta: metadatos de esta ejecución.
-    """
+def anotaciones_calculo(title: str) -> ToolAnnotations:
+    return ToolAnnotations(
+        title=title,
+        readOnlyHint=True,
+        destructiveHint=False,
+        idempotentHint=True,
+        openWorldHint=False,
+    )
 
+
+def metadatos_herramienta() -> dict:
+    return {
+        "service": SERVICE_NAME,
+        "version": VERSION,
+        "category": "matematicas",
+    }
+
+
+def crear_resultado_mcp(data: dict) -> ToolResult:
     operation = data.get("operation", "desconocida")
 
+    # Anotaciones del contenido de la respuesta.
+    # La audiencia "user" indica que el contenido está
+    # destinado al usuario.
     content_annotations = Annotations(
-        audience=[Role.USER],
+        audience=["user"],
         priority=1.0,
     )
 
+    # Metadatos personalizados del contenido.
     content_meta = {
         "service": SERVICE_NAME,
         "version": VERSION,
@@ -263,6 +283,7 @@ def crear_resultado_mcp(data: dict) -> ToolResult:
         "content_format": "application/json",
     }
 
+    # Metadatos personalizados de la ejecución.
     execution_meta = {
         "service": SERVICE_NAME,
         "version": VERSION,
@@ -285,33 +306,15 @@ def crear_resultado_mcp(data: dict) -> ToolResult:
 
 
 # =========================================================
-# ANOTACIONES ESTÁNDAR DE LAS HERRAMIENTAS
-# =========================================================
-
-def anotaciones_calculo(title: str) -> ToolAnnotations:
-    return ToolAnnotations(
-        title=title,
-        readOnlyHint=True,
-        destructiveHint=False,
-        idempotentHint=True,
-        openWorldHint=False,
-    )
-
-
-# =========================================================
 # HERRAMIENTAS MCP
-# Los nombres públicos son exactamente los indicados.
+# Los nombres públicos se definen explícitamente.
 # =========================================================
 
 @mcp.tool(
     name="sumar",
     description="Suma dos números y devuelve el resultado.",
     annotations=anotaciones_calculo("Sumar"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_sumar(a: float, b: float) -> ToolResult:
     """Suma dos números."""
@@ -320,13 +323,9 @@ def tool_sumar(a: float, b: float) -> ToolResult:
 
 @mcp.tool(
     name="restar",
-    description="Resta el segundo número al primero.",
+    description="Resta b de a.",
     annotations=anotaciones_calculo("Restar"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_restar(a: float, b: float) -> ToolResult:
     """Resta b de a."""
@@ -337,11 +336,7 @@ def tool_restar(a: float, b: float) -> ToolResult:
     name="multiplicar",
     description="Multiplica dos números.",
     annotations=anotaciones_calculo("Multiplicar"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_multiplicar(a: float, b: float) -> ToolResult:
     """Multiplica dos números."""
@@ -350,13 +345,9 @@ def tool_multiplicar(a: float, b: float) -> ToolResult:
 
 @mcp.tool(
     name="dividir",
-    description="Divide el primer número entre el segundo.",
+    description="Divide a entre b.",
     annotations=anotaciones_calculo("Dividir"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_dividir(a: float, b: float) -> ToolResult:
     """Divide a entre b."""
@@ -365,13 +356,9 @@ def tool_dividir(a: float, b: float) -> ToolResult:
 
 @mcp.tool(
     name="modulo",
-    description="Calcula el resto de la división de dos números.",
+    description="Calcula el resto de a dividido entre b.",
     annotations=anotaciones_calculo("Módulo"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_modulo(a: float, b: float) -> ToolResult:
     """Calcula el resto de a dividido entre b."""
@@ -382,11 +369,7 @@ def tool_modulo(a: float, b: float) -> ToolResult:
     name="potencia",
     description="Eleva una base a un exponente.",
     annotations=anotaciones_calculo("Potencia"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_potencia(base: float, exponent: float) -> ToolResult:
     """Eleva base a la potencia exponent."""
@@ -399,11 +382,7 @@ def tool_potencia(base: float, exponent: float) -> ToolResult:
     name="raiz",
     description="Calcula la raíz n-ésima de un número real.",
     annotations=anotaciones_calculo("Raíz"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_raiz(n: float, x: float) -> ToolResult:
     """Calcula la raíz n-ésima de x."""
@@ -414,11 +393,7 @@ def tool_raiz(n: float, x: float) -> ToolResult:
     name="evaluar",
     description="Evalúa una expresión matemática de forma segura.",
     annotations=anotaciones_calculo("Evaluar expresión"),
-    meta={
-        "service": SERVICE_NAME,
-        "version": VERSION,
-        "category": "matematicas",
-    },
+    meta=metadatos_herramienta(),
 )
 def tool_evaluar(expr: str) -> ToolResult:
     """Evalúa una expresión matemática de forma segura."""
@@ -426,7 +401,7 @@ def tool_evaluar(expr: str) -> ToolResult:
 
 
 # =========================================================
-# FASTAPI: API REST + MCP
+# FASTAPI + INTEGRACIÓN HTTP DE MCP
 # =========================================================
 
 mcp_app = mcp.http_app(path="/")
@@ -440,7 +415,7 @@ app = FastAPI(
 
 
 # =========================================================
-# DECORADOR DE LOGGING REST
+# DECORADOR DE LOGGING
 # =========================================================
 
 def api_log(func):
@@ -448,17 +423,29 @@ def api_log(func):
 
         @functools.wraps(func)
         async def async_wrapper(*args, **kwargs):
-            result = await func(*args, **kwargs)
-            print(f"ENDPOINT: {func.__name__} | RESULT: {result}")
-            return result
+            try:
+                result = await func(*args, **kwargs)
+                print(
+                    f"ENDPOINT: {func.__name__} | RESULT: {result}"
+                )
+                return result
+            except Exception as e:
+                print(f"ERROR en {func.__name__}: {e}")
+                raise
 
         return async_wrapper
 
     @functools.wraps(func)
     def sync_wrapper(*args, **kwargs):
-        result = func(*args, **kwargs)
-        print(f"ENDPOINT: {func.__name__} | RESULT: {result}")
-        return result
+        try:
+            result = func(*args, **kwargs)
+            print(
+                f"ENDPOINT: {func.__name__} | RESULT: {result}"
+            )
+            return result
+        except Exception as e:
+            print(f"ERROR en {func.__name__}: {e}")
+            raise
 
     return sync_wrapper
 
@@ -566,7 +553,7 @@ def rest_evaluar(operation: ExpressionOperation):
 
 
 # =========================================================
-# INFORMACIÓN DE LA API
+# ENDPOINT DE INFORMACIÓN
 # =========================================================
 
 @app.get("/", tags=["Info"])
@@ -591,14 +578,14 @@ def info():
 
 
 # =========================================================
-# MONTAJE MCP
+# MONTAR MCP EN FASTAPI
 # =========================================================
 
 app.mount("/mcp", mcp_app)
 
 
 # =========================================================
-# ARRANQUE LOCAL / RENDER
+# ARRANQUE LOCAL Y RENDER
 # =========================================================
 
 if __name__ == "__main__":

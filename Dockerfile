@@ -13,14 +13,17 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Copiar archivos del proyecto
+# 1. Copiar primero requirements.txt para aprovechar la caché de Docker
+COPY requirements.txt /app/requirements.txt
+
+# 2. Instalar dependencias desde el archivo requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+# 3. Copiar el resto del código de la aplicación
 COPY . /app
 
-# Instalar dependencias Python
-RUN pip install --no-cache-dir fastapi uvicorn pydantic fastmcp
-
-# Exponer el puerto (FastMCP usa el que definas en PORT)
+# Exponer el puerto
 EXPOSE 8000
 
 # Comando de arranque
-CMD ["python", "main.py"] 
+CMD ["python", "main.py"]

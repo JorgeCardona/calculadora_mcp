@@ -174,12 +174,15 @@ def root():
     return {"name": "Math API", "version": "1.0.0", "docs": "/docs"}
 
 # ---------------------------
-# Integración Híbrida (FastAPI + MCP)
+# Integración Unificada (FastAPI Docs + MCP)
 # ---------------------------
 
 mcp = FastMCP.from_fastapi(app)
-app.mount("/mcp", mcp.http_app())  # Monta el MCP como sub-aplicación dentro de FastAPI
+
+# Monta las rutas de FastMCP en /mcp conservando FastAPI como la app principal
+app.mount("/mcp", mcp.http_app(transport="http"))
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)  # Arranca FastAPI con Uvicorn (Mantiene /docs y /mcp funcionales)
+    # Ejecuta FastAPI directamente con Uvicorn para conservar /docs y servir /mcp
+    uvicorn.run(app, host="0.0.0.0", port=port)

@@ -1,3 +1,5 @@
+# MCP Server disponible en: https://calculadora-mcp.onrender.com/mcp
+
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 import uvicorn
@@ -172,13 +174,12 @@ def root():
     return {"name": "Math API", "version": "1.0.0", "docs": "/docs"}
 
 # ---------------------------
-# MCP Server Wrapper
+# Integración Híbrida (FastAPI + MCP)
 # ---------------------------
 
-# Create MCP server from FastAPI app
 mcp = FastMCP.from_fastapi(app)
+app.mount("/mcp", mcp.http_app())  # Monta el MCP como sub-aplicación dentro de FastAPI
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
-    # Run using the MCP runner which handles SSE/HTTP
-    mcp.run(transport="http", host="0.0.0.0", port=port)
+    uvicorn.run(app, host="0.0.0.0", port=port)  # Arranca FastAPI con Uvicorn (Mantiene /docs y /mcp funcionales)

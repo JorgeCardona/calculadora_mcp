@@ -24,7 +24,7 @@ from mcp.types import ToolAnnotations
 # CONFIGURACIÓN
 # =========================================================
 
-VERSION = "2.1.3"
+VERSION = "2.1.4"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -303,7 +303,7 @@ def calcular_expresion(expr: str) -> dict:
 
 
 # =========================================================
-# FASTMCP: HERRAMIENTAS, ANOTACIONES Y METADATOS
+# FASTMCP: HERRAMIENTAS NATIVAS
 # =========================================================
 
 mcp = FastMCP("Calculadora")
@@ -319,66 +319,98 @@ def anotaciones(titulo: str) -> ToolAnnotations:
     )
 
 
-def registrar_tool(nombre: str, descripcion: str):
-    """Registra una herramienta con nombre, anotaciones y meta."""
-    def decorador(func):
-        func = typechecked(func)
-        func = registrar_llamada("MCP", nombre)(func)
-
-        return mcp.tool(
-            name=nombre,
-            description=descripcion,
-            annotations=anotaciones(nombre.capitalize()),
-            meta={
-                "service": "calculadora",
-                "version": VERSION,
-                "category": "matematicas",
-                "tool": nombre,
-            },
-        )(func)
-
-    return decorador
-
-
-@registrar_tool("sumar", "Suma dos números.")
+@mcp.tool(
+    name="sumar",
+    description="Suma dos números.",
+    annotations=anotaciones("Sumar"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "sumar"}
+)
+@typechecked
+@registrar_llamada("MCP", "sumar")
 def tool_sumar(a: float, b: float) -> dict:
     return calcular_suma(a, b)
 
 
-@registrar_tool("restar", "Resta b de a.")
+@mcp.tool(
+    name="restar",
+    description="Resta b de a.",
+    annotations=anotaciones("Restar"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "restar"}
+)
+@typechecked
+@registrar_llamada("MCP", "restar")
 def tool_restar(a: float, b: float) -> dict:
     return calcular_resta(a, b)
 
 
-@registrar_tool("multiplicar", "Multiplica dos números.")
+@mcp.tool(
+    name="multiplicar",
+    description="Multiplica dos números.",
+    annotations=anotaciones("Multiplicar"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "multiplicar"}
+)
+@typechecked
+@registrar_llamada("MCP", "multiplicar")
 def tool_multiplicar(a: float, b: float) -> dict:
     return calcular_multiplicacion(a, b)
 
 
-@registrar_tool("dividir", "Divide a entre b.")
+@mcp.tool(
+    name="dividir",
+    description="Divide a entre b.",
+    annotations=anotaciones("Dividir"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "dividir"}
+)
+@typechecked
+@registrar_llamada("MCP", "dividir")
 def tool_dividir(a: float, b: float) -> dict:
     return calcular_division(a, b)
 
 
-@registrar_tool("modulo", "Calcula el resto de a dividido entre b.")
+@mcp.tool(
+    name="modulo",
+    description="Calcula el resto de a dividido entre b.",
+    annotations=anotaciones("Modulo"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "modulo"}
+)
+@typechecked
+@registrar_llamada("MCP", "modulo")
 def tool_modulo(a: float, b: float) -> dict:
     return calcular_modulo(a, b)
 
 
-@registrar_tool("potencia", "Eleva una base a un exponente.")
+@mcp.tool(
+    name="potencia",
+    description="Eleva una base a un exponente.",
+    annotations=anotaciones("Potencia"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "potencia"}
+)
+@typechecked
+@registrar_llamada("MCP", "potencia")
 def tool_potencia(base: float, exponent: float) -> dict:
     return calcular_potencia(base, exponent)
 
 
-@registrar_tool("raiz", "Calcula la raíz n-ésima de un número.")
+@mcp.tool(
+    name="raiz",
+    description="Calcula la raíz n-ésima de un número.",
+    annotations=anotaciones("Raiz"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "raiz"}
+)
+@typechecked
+@registrar_llamada("MCP", "raiz")
 def tool_raiz(n: float, x: float) -> dict:
     return calcular_raiz(n, x)
 
 
-@registrar_tool(
-    "evaluar",
-    "Evalúa una expresión matemática de forma segura.",
+@mcp.tool(
+    name="evaluar",
+    description="Evalúa una expresión matemática de forma segura.",
+    annotations=anotaciones("Evaluar"),
+    meta={"service": "calculadora", "version": VERSION, "category": "matematicas", "tool": "evaluar"}
 )
+@typechecked
+@registrar_llamada("MCP", "evaluar")
 def tool_evaluar(expr: str) -> dict:
     return calcular_expresion(expr)
 

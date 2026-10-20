@@ -14,7 +14,7 @@ from typing import Any
 
 import uvicorn
 from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 from typeguard import typechecked
 from fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -24,7 +24,7 @@ from mcp.types import ToolAnnotations
 # CONFIGURACIÓN
 # =========================================================
 
-VERSION = "2.1.4"
+VERSION = "2.1.3"
 
 logging.basicConfig(
     level=logging.INFO,
@@ -91,7 +91,7 @@ class RootOperation(BaseModel):
 
 class ExpressionOperation(BaseModel):
     model_config = ConfigDict(strict=True)
-    expr: str
+    expr: str = Field(min_length=1, max_length=500)
 
 
 # =========================================================
@@ -234,7 +234,6 @@ _UNARYOPS = {
 }
 
 
-@typechecked
 def evaluar_nodo(node: ast.AST) -> float:
     if isinstance(node, ast.Expression):
         return evaluar_nodo(node.body)
